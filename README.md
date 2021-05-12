@@ -7,3 +7,6 @@ Install is simple:
 ```
 
 The daemonset runs when deployed and on start whenever a node is rebooted.
+
+# Much Ado About Managed Control Planes
+If you have a managed Kubernetes on `Digital Ocean` or `Linode`, it is unfortunate that they failed to configure the control plane to resolve cluster DNS. This daemonset can not fix those issues.
