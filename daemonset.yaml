@@ -7,7 +7,8 @@ data:
       set +x
 
       function patch(){
-        echo "$(date -u) - Running patcher."
+        echo "$(date -u) - Beginning to patch /etc/resolv.conf on the node"
+
         MOD_LINE="# $(date -u) - modified by resolve-host-patcher on boot"
         grep -v 'resolve-host-patcher' /var/run/host-etc/resolv.conf > /tmp/original-node-resolve.conf
         echo "${MOD_LINE}" > /tmp/kube-resolv.conf
@@ -15,11 +16,13 @@ data:
           echo "nameserver ${ip} # added by resolve-host-patcher" >> /tmp/kube-resolv.conf
         done
         cat /tmp/kube-resolv.conf /tmp/original-node-resolve.conf | sed '/^$/d'  > /var/run/host-etc/resolv.conf
-        echo "$(date -u) - Patcher done."
+        
+        echo "$(date -u) - Done patching /etc/resolv.conf"
       }
 
       while true; do
-        patch;
+        patch
+        echo "$(date -u) - Sleeping for 30 min"
         sleep 30m
       done
 
