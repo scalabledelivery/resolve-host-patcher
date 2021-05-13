@@ -3,18 +3,27 @@ apiVersion: v1
 data:
   patch-resolve.conf.sh: |-
       #!/bin/bash
+      set +e
       set +x
 
-      MOD_LINE="# $(date -u) - modified by resolve-host-patcher on boot"
+      function patch(){
+        echo "$(date -u) - Running patcher."
+        MOD_LINE="# $(date -u) - modified by resolve-host-patcher on boot"
+        grep -v 'resolve-host-patcher' /var/run/host-etc/resolv.conf > /tmp/original-node-resolve.conf
+        echo "${MOD_LINE}" > /tmp/kube-resolv.conf
+        for ip in $(grep ^nameserver /etc/resolv.conf | awk '{$1=""; print}'); do
+          echo "nameserver ${ip} # added by resolve-host-patcher" >> /tmp/kube-resolv.conf
+        done
+        cat /tmp/kube-resolv.conf /tmp/original-node-resolve.conf | sed '/^$/d'  > /var/run/host-etc/resolv.conf
+        echo "$(date -u) - Patcher done."
+      }
 
-      grep -v 'resolve-host-patcher' /var/run/host-etc/resolv.conf > /tmp/original-node-resolve.conf
-
-      echo "${MOD_LINE}" > /tmp/kube-resolv.conf
-      for ip in $(grep ^nameserver /etc/resolv.conf | awk '{$1=""; print}'); do
-        echo "nameserver ${ip} # added by resolve-host-patcher" >> /tmp/kube-resolv.conf
+      while true; do
+        patch;
+        sleep 30m
       done
 
-      cat /tmp/kube-resolv.conf /tmp/original-node-resolve.conf | sed '/^$/d'  > /var/run/host-etc/resolv.conf
+      exit 0 # I would like to exit 0 and only run on boot...
 kind: ConfigMap
 metadata:
   name: scripts-resolve-host-patcher
@@ -35,12 +44,15 @@ spec:
       labels:
         name: resolve-host-patcher
     spec:
-      containers:
+      restartPolicy: Always # Can't change this.
+      containers: 
       - image: bash
         name: resolve-host-patcher
     
         command: ["bash"]
         args: [ "/patch-resolve.conf.sh" ]
+        # For debugging.
+        #args: [ "-c", "sleep 86000s" ]
     
         volumeMounts:
         - mountPath: /var/run/host-etc/
