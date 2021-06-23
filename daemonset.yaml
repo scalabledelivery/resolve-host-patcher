@@ -1,7 +1,7 @@
 ---
 apiVersion: v1
 data:
-  patch-resolve.conf.sh: |-
+  patch-resolve.conf.sh: |
       #!/bin/bash
       set -x -e
 
