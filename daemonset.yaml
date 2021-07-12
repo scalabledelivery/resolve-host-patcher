@@ -1,51 +1,4 @@
 ---
-apiVersion: v1
-data:
-  patch-resolve.conf.sh: |
-      #!/bin/bash
-      set -x -e
-
-      function patch(){
-        echo "$(date -u) - Beginning to patch /etc/resolv.conf on the node"
-
-        # Detect systemd-resolved shenanigans and undo it.
-        # systemd-resolved wont route to anything internal because
-        # someone decided the security was better than flexibility?
-        if [ -s /var/run/hostpaths/etc/resolv.conf ]; then
-          echo Undoing systemd-resolved shenanigans.
-          cat /var/run/hostpaths/etc/resolv.conf > /var/run/hostpaths/etc/resolv.conf.tmp
-          unlink /var/run/hostpaths/etc/resolv.conf
-          mv /var/run/hostpaths/etc/resolv.conf.tmp /var/run/hostpaths/etc/resolv.conf
-        fi
-
-        MOD_LINE="# $(date -u) - modified by resolve-host-patcher on boot"
-        grep -v 'resolve-host-patcher' /var/run/hostpaths/etc/resolv.conf > /tmp/original-node-resolve.conf
-        echo "${MOD_LINE}" > /tmp/kube-resolv.conf
-        for ip in $(grep ^nameserver /etc/resolv.conf | awk '{$1=""; print}'); do
-          echo "nameserver ${ip} # added by resolve-host-patcher" >> /tmp/kube-resolv.conf
-        done
-        cat /tmp/kube-resolv.conf /tmp/original-node-resolve.conf | sed '/^$/d'  > /var/run/hostpaths/etc/resolv.conf
-
-        cat /var/run/hostpaths/etc/resolv.conf
-        ls -lah /var/run/hostpaths/etc/resolv.conf
-        cat /var/run/hostpaths/etc/resolv.conf
-        
-        echo "$(date -u) - Done patching /etc/resolv.conf"
-      }
-
-      while true; do
-        patch
-        echo "$(date -u) - Sleeping for 30 min"
-        sleep 30m
-      done
-
-      exit 0 # I would like to exit 0 and only run on boot...
-kind: ConfigMap
-metadata:
-  name: scripts-resolve-host-patcher
-  namespace: kube-system
-
----
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -60,24 +13,65 @@ spec:
       labels:
         name: resolve-host-patcher
     spec:
-      restartPolicy: Always # Can't change this.
       containers: 
       - image: bash
         name: resolve-host-patcher
     
-        command: ["bash"]
-        args: [ "/patch-resolve.conf.sh" ]
-        # For debugging.
-        #args: [ "-c", "sleep 86000s" ]
+        command:
+        - bash
+        - -c
+        - |
+          #!/bin/bash
+          set -x -e
+
+          function patch(){
+            echo "$(date -u) - Beginning to patch /etc/resolv.conf on the node"
+
+            # Detect systemd-resolved shenanigans and undo it.
+            # systemd-resolved wont route to anything internal because
+            # someone decided the security was better than flexibility?
+            if [ -s /var/run/hostpaths/etc/resolv.conf ]; then
+              echo Undoing systemd-resolved shenanigans.
+              cat /var/run/hostpaths/etc/resolv.conf > /var/run/hostpaths/etc/resolv.conf.tmp
+              unlink /var/run/hostpaths/etc/resolv.conf
+              mv /var/run/hostpaths/etc/resolv.conf.tmp /var/run/hostpaths/etc/resolv.conf
+            fi
+
+            # Patch the resolve.conf file
+            MOD_LINE="# $(date -u) - modified by resolve-host-patcher on boot"
+            grep -v 'resolve-host-patcher' /var/run/hostpaths/etc/resolv.conf > /tmp/original-node-resolve.conf
+            echo "${MOD_LINE}" > /tmp/kube-resolv.conf
+            for ip in $(grep ^nameserver /etc/resolv.conf | awk '{$1=""; print}'); do
+              echo "nameserver ${ip} # added by resolve-host-patcher" >> /tmp/kube-resolv.conf
+            done
+            
+            # options can break things, we're just going to disable those
+            sed -i -e 's/^options/#options/g' /tmp/original-node-resolve.conf
+
+            # concatenate the files and merge them into a singular resolv.conf
+            # the sed plumbing prevents empty lines from growing
+            cat /tmp/kube-resolv.conf /tmp/original-node-resolve.conf | sed '/^$/d'  > /var/run/hostpaths/etc/resolv.conf
+
+            cat /var/run/hostpaths/etc/resolv.conf
+            ls -lah /var/run/hostpaths/etc/resolv.conf
+            cat /var/run/hostpaths/etc/resolv.conf
+
+            echo "$(date -u) - Done patching /etc/resolv.conf"
+          }
+
+          while true; do
+            patch
+            echo "$(date -u) - Sleeping for 30 min"
+            sleep 30m
+          done
+
+          exit 0 # I would like to exit 0 and only run on boot...
     
         volumeMounts:
         - mountPath: /var/run/hostpaths/etc/
           name: etc
         - mountPath: /var/run/hostpaths/run/
           name: run
-        - mountPath: /patch-resolve.conf.sh
-          name: config
-          subPath: patch-resolve.conf.sh
 
       volumes:
       - name: etc
@@ -86,8 +80,3 @@ spec:
       - name: run
         hostPath:
           path: /run
-
-      - name: config
-        configMap:
-          defaultMode: 420
-          name: scripts-resolve-host-patcher
