@@ -16,26 +16,24 @@ spec:
       containers: 
       - image: bash
         name: resolve-host-patcher
-    
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         command:
         - bash
         - -c
         - |
           #!/bin/bash
           set -x -e
-
           function patch(){
             echo "$(date -u) - Beginning to patch /etc/resolv.conf on the node"
 
-            # Detect systemd-resolved shenanigans and undo it.
-            # systemd-resolved wont route to anything internal because
-            # someone decided the security was better than flexibility?
-            if [ -s /var/run/hostpaths/etc/resolv.conf ]; then
-              echo Undoing systemd-resolved shenanigans.
-              cat /var/run/hostpaths/etc/resolv.conf > /var/run/hostpaths/etc/resolv.conf.tmp
-              unlink /var/run/hostpaths/etc/resolv.conf
-              mv /var/run/hostpaths/etc/resolv.conf.tmp /var/run/hostpaths/etc/resolv.conf
-            fi
+            # get around systemd-resolved shenanigans
+            cat /var/run/hostpaths/etc/resolv.conf > /var/run/hostpaths/etc/resolv.conf.tmp
+            unlink /var/run/hostpaths/etc/resolv.conf || true # read-only docker-desktop shenanigans
+            cat /var/run/hostpaths/etc/resolv.conf.tmp > /var/run/hostpaths/etc/resolv.conf
 
             # Patch the resolve.conf file
             MOD_LINE="# $(date -u) - modified by resolve-host-patcher on boot"
