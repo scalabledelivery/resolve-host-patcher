@@ -27,33 +27,12 @@ spec:
         - |
           #!/bin/bash
           set -x -e
+          
+          # We're relying on coredns from now on...
           function patch(){
             echo "$(date -u) - Beginning to patch /etc/resolv.conf on the node"
-
-            # get around systemd-resolved shenanigans
-            cat /var/run/hostpaths/etc/resolv.conf > /var/run/hostpaths/etc/resolv.conf.tmp
             unlink /var/run/hostpaths/etc/resolv.conf || true # read-only docker-desktop shenanigans
-            cat /var/run/hostpaths/etc/resolv.conf.tmp > /var/run/hostpaths/etc/resolv.conf
-
-            # Patch the resolve.conf file
-            MOD_LINE="# $(date -u) - modified by resolve-host-patcher on boot"
-            grep -v 'resolve-host-patcher' /var/run/hostpaths/etc/resolv.conf > /tmp/original-node-resolve.conf
-            echo "${MOD_LINE}" > /tmp/kube-resolv.conf
-            for ip in $(grep ^nameserver /etc/resolv.conf | awk '{$1=""; print}'); do
-              echo "nameserver ${ip} # added by resolve-host-patcher" >> /tmp/kube-resolv.conf
-            done
-            
-            # options can break things, we're just going to disable those
-            sed -i -e 's/^options/#options/g' /tmp/original-node-resolve.conf
-
-            # concatenate the files and merge them into a singular resolv.conf
-            # the sed plumbing prevents empty lines from growing
-            cat /tmp/kube-resolv.conf /tmp/original-node-resolve.conf | sed '/^$/d'  > /var/run/hostpaths/etc/resolv.conf
-
-            cat /var/run/hostpaths/etc/resolv.conf
-            ls -lah /var/run/hostpaths/etc/resolv.conf
-            cat /var/run/hostpaths/etc/resolv.conf
-
+            cat /etc/resolv.conf > /var/run/hostpaths/etc/resolv.conf
             echo "$(date -u) - Done patching /etc/resolv.conf"
           }
 
@@ -68,8 +47,6 @@ spec:
         volumeMounts:
         - mountPath: /var/run/hostpaths/etc/
           name: etc
-        - mountPath: /var/run/hostpaths/run/
-          name: run
 
       volumes:
       - name: etc
